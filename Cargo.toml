@@ -13,9 +13,18 @@ keywords = ["sockets", "udp", "ip_pktinfo", "multicast"]
 categories = ["network-programming"]
 description = "Small library to allow cross-platform handling of IP_PKTINFO and IPV6_PKTINFO with socket2 crate"
 
+[features]
+default = []
+tokio = ["dep:tokio"]
+
 [dependencies.socket2]
 version = "0.6"
 features = ["all"]
+
+[dependencies.tokio]
+version = "1"
+features = ["net", "io-util"]
+optional = true
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61.2"
@@ -30,3 +39,7 @@ version = "0.2.177"
 
 [dev-dependencies.network-interface]
 version = "2.0.3"
+
+[dev-dependencies.tokio]
+version = "1"
+features = ["rt", "macros", "net"]
