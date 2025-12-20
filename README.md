@@ -7,7 +7,28 @@
 
 Small library to allow cross-platform handling of IP_PKTINFO and IPV6_PKTINFO with socket2 crate. Primary use case for this crate is to determine if a UDP packet was sent to a unicast, broadcast or multicast IP address. Compatible with Windows, Linux and macOS.
 
-## Example
+## Features
+
+- **Synchronous API**: `PktInfoUdpSocket` for blocking I/O operations
+- **Asynchronous API** (optional): `AsyncPktInfoUdpSocket` for async/await with Tokio runtime
+- **Multi-platform support**: Works on Windows (IOCP), Linux (epoll), and macOS (kqueue)
+- **Standard library interop**: Convert from/to `std::net::UdpSocket`
+
+## Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+socket-pktinfo = "0.4"
+
+# For Tokio async support
+socket-pktinfo = { version = "0.4", features = ["tokio"] }
+```
+
+## Examples
+
+### Synchronous API
 
 ```rust
 use std::net::{Ipv4Addr, SocketAddrV4};
@@ -33,3 +54,64 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 ```
+
+### Asynchronous API with Tokio
+
+```rust
+use std::net::{Ipv4Addr, SocketAddrV4};
+use socket2::{Domain, SockAddr};
+use socket_pktinfo::AsyncPktInfoUdpSocket;
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    let mut buf = [0; 1024];
+    
+    // Bind directly using the async constructor
+    let socket = AsyncPktInfoUdpSocket::bind(
+        Domain::IPV4,
+        &SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8000).into()
+    ).await?;
+    
+    match socket.recv(&mut buf).await {
+        Ok((bytes_received, info)) => {
+            println!("{} bytes received on interface index {} from src {} with destination ip {}",
+                bytes_received, info.if_index, info.addr_src, info.addr_dst);
+        }
+        Err(e) => {
+            eprintln!("Error receiving packet - {}", e);
+        }
+    }
+    
+    Ok(())
+}
+```
+
+### Convert from std::net::UdpSocket
+
+```rust
+use socket_pktinfo::AsyncPktInfoUdpSocket;
+use std::net::{Ipv4Addr, SocketAddr};
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    // Create a standard UDP socket
+    let std_socket = std::net::UdpSocket::bind(
+        SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 8000)
+    )?;
+    
+    // Convert to AsyncPktInfoUdpSocket
+    let socket = AsyncPktInfoUdpSocket::from_std(std_socket)?;
+    
+    let mut buf = [0; 1024];
+    let (bytes, info) = socket.recv(&mut buf).await?;
+    println!("Received {} bytes with pktinfo: {:?}", bytes, info);
+    
+    Ok(())
+}
+```
+
+## Platform-Specific Implementation
+
+- **Windows**: Uses `WSARecvMsg` with IOCP for efficient async I/O
+- **Unix/Linux**: Uses `recvmsg` with control messages
+- **macOS**: Uses `recvmsg` with BSD-style control messages
