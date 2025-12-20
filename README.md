@@ -7,6 +7,9 @@
 
 Small library to allow cross-platform handling of IP_PKTINFO and IPV6_PKTINFO with socket2 crate. Primary use case for this crate is to determine if a UDP packet was sent to a unicast, broadcast or multicast IP address. Compatible with Windows, Linux and macOS.
 
+> [!IMPORTANT]
+> This fork adds asynchronous Tokio support and is implemented entirely by AI without active human review. Use at your own risk.
+
 ## Features
 
 - **Synchronous API**: `PktInfoUdpSocket` for blocking I/O operations
@@ -115,3 +118,7 @@ async fn main() -> std::io::Result<()> {
 - **Windows**: Uses `WSARecvMsg` with IOCP for efficient async I/O
 - **Unix/Linux**: Uses `recvmsg` with control messages
 - **macOS**: Uses `recvmsg` with BSD-style control messages
+
+## Disclaimer
+
+This fork extends `socket-pktinfo` with asynchronous support. The implementation was created fully by AI and has not been actively audited or reviewed by humans. While automated tests pass on supported platforms, there may be edge cases or platform-specific behaviors that are unaddressed. You should evaluate and test in your environment before relying on it in production. Use at your own risk.
