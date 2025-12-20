@@ -5,7 +5,13 @@
 //! Library implements a cross-platform wrapper [`crate::PktInfoUdpSocket`] around [`socket2::Socket`] which returns data extracted from
 //! the IP_PKTINFO and IPV6_PKTINFO control messages. Compatible with Windows, Linux and macOS.
 //!
+//! # Features
+//!
+//! - `tokio`: Enable Tokio async runtime support with [`crate::AsyncPktInfoUdpSocket`]
+//!
 //! # Examples
+//!
+//! ## Synchronous API
 //!
 //! ```no_run
 //! use std::net::{Ipv4Addr, SocketAddrV4};
@@ -28,6 +34,37 @@
 //!     }
 //! }
 //! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Asynchronous API (with `tokio` feature)
+//!
+//! ```no_run
+//! # #[cfg(feature = "tokio")]
+//! # {
+//! use std::net::{Ipv4Addr, SocketAddrV4};
+//! use socket2::{Domain, SockAddr};
+//! use socket_pktinfo::AsyncPktInfoUdpSocket;
+//!
+//! # async fn example() -> std::io::Result<()> {
+//!
+//! let mut buf = [0; 1024];
+//! let socket = AsyncPktInfoUdpSocket::bind(
+//!     Domain::IPV4,
+//!     &SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8000).into()
+//! ).await?;
+//!
+//! match socket.recv(&mut buf).await {
+//!     Ok((bytes_received, info)) => {
+//!         println!("{} bytes received on interface index {} from src {} with destination ip {}",
+//!          bytes_received, info.if_index, info.addr_src, info.addr_dst);
+//!     }
+//!     Err(e) => {
+//!         eprintln!("Error receiving packet - {}", e);
+//!     }
+//! }
+//! # Ok(())
+//! # }
 //! # }
 //! ```
 
