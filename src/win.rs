@@ -15,6 +15,9 @@ use windows_sys::Win32::System::IO::OVERLAPPED;
 
 use crate::PktInfo;
 
+#[cfg(feature = "tokio")]
+use std::os::windows::io::{AsSocket, FromRawSocket, IntoRawSocket};
+
 const CMSG_HEADER_SIZE: usize = mem::size_of::<CMSGHDR>();
 const PKTINFOV4_DATA_SIZE: usize = mem::size_of::<IN_PKTINFO>();
 const PKTINFOV6_DATA_SIZE: usize = mem::size_of::<IN6_PKTINFO>();
@@ -284,5 +287,334 @@ impl PktInfoUdpSocket {
     /// This is useful to mix and match functionality from this crate with stdlib or other crates.
     pub fn try_clone_std(&self) -> io::Result<std::net::UdpSocket> {
         Ok(self.socket.try_clone()?.into())
+    }
+}
+
+#[cfg(feature = "tokio")]
+pub struct AsyncPktInfoUdpSocket {
+    socket: tokio::net::UdpSocket,
+    domain: Domain,
+    wsarecvmsg: WSARecvMsgExtension,
+}
+
+#[cfg(feature = "tokio")]
+impl Debug for AsyncPktInfoUdpSocket {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.socket.fmt(f)
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl AsSocket for AsyncPktInfoUdpSocket {
+    fn as_socket(&self) -> std::os::windows::io::BorrowedSocket<'_> {
+        self.socket.as_socket()
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl AsyncPktInfoUdpSocket {
+    pub fn new(domain: Domain) -> io::Result<AsyncPktInfoUdpSocket> {
+        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+        match domain {
+            Domain::IPV4 => unsafe {
+                setsockopt(socket.as_raw_socket(), IPPROTO_IP, IP_PKTINFO, true as i32)?;
+            },
+            Domain::IPV6 => unsafe {
+                setsockopt(
+                    socket.as_raw_socket(),
+                    IPPROTO_IPV6,
+                    IPV6_PKTINFO,
+                    true as i32,
+                )?;
+            },
+            _ => return Err(Error::from(ErrorKind::Unsupported)),
+        }
+
+        let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(socket.as_raw_socket())?;
+        
+        socket.set_nonblocking(true)?;
+        let std_socket: std::net::UdpSocket = socket.into();
+        let tokio_socket = tokio::net::UdpSocket::from_std(std_socket)?;
+
+        Ok(AsyncPktInfoUdpSocket {
+            socket: tokio_socket,
+            domain,
+            wsarecvmsg,
+        })
+    }
+
+    pub fn from_std(std_socket: std::net::UdpSocket) -> io::Result<AsyncPktInfoUdpSocket> {
+        let raw_socket = std_socket.as_raw_socket();
+        let domain = if std_socket.local_addr()?.is_ipv4() {
+            Domain::IPV4
+        } else {
+            Domain::IPV6
+        };
+
+        match domain {
+            Domain::IPV4 => unsafe {
+                setsockopt(raw_socket, IPPROTO_IP, IP_PKTINFO, true as i32)?;
+            },
+            Domain::IPV6 => unsafe {
+                setsockopt(raw_socket, IPPROTO_IPV6, IPV6_PKTINFO, true as i32)?;
+            },
+            _ => return Err(Error::from(ErrorKind::Unsupported)),
+        }
+
+        let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(raw_socket)?;
+        
+        std_socket.set_nonblocking(true)?;
+        let tokio_socket = tokio::net::UdpSocket::from_std(std_socket)?;
+
+        Ok(AsyncPktInfoUdpSocket {
+            socket: tokio_socket,
+            domain,
+            wsarecvmsg,
+        })
+    }
+
+    pub async fn bind(domain: Domain, addr: &SockAddr) -> io::Result<AsyncPktInfoUdpSocket> {
+        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+        match domain {
+            Domain::IPV4 => unsafe {
+                setsockopt(socket.as_raw_socket(), IPPROTO_IP, IP_PKTINFO, true as i32)?;
+            },
+            Domain::IPV6 => unsafe {
+                setsockopt(
+                    socket.as_raw_socket(),
+                    IPPROTO_IPV6,
+                    IPV6_PKTINFO,
+                    true as i32,
+                )?;
+            },
+            _ => return Err(Error::from(ErrorKind::Unsupported)),
+        }
+
+        let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(socket.as_raw_socket())?;
+        
+        socket.bind(addr)?;
+        socket.set_nonblocking(true)?;
+        let std_socket: std::net::UdpSocket = socket.into();
+        let tokio_socket = tokio::net::UdpSocket::from_std(std_socket)?;
+
+        Ok(AsyncPktInfoUdpSocket {
+            socket: tokio_socket,
+            domain,
+            wsarecvmsg,
+        })
+    }
+
+    pub fn domain(&self) -> Domain {
+        self.domain
+    }
+
+    pub fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
+        self.socket.local_addr()
+    }
+
+    pub fn set_reuse_address(&self, reuse: bool) -> io::Result<()> {
+        unsafe {
+            setsockopt(
+                self.socket.as_raw_socket(),
+                WinSock::SOL_SOCKET,
+                WinSock::SO_REUSEADDR,
+                reuse as i32,
+            )
+        }
+    }
+
+    pub fn join_multicast_v4(&self, addr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
+        self.socket.join_multicast_v4(*addr, *interface)
+    }
+
+    pub fn leave_multicast_v4(&self, addr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
+        self.socket.leave_multicast_v4(*addr, *interface)
+    }
+
+    pub fn set_multicast_if_v4(&self, interface: &Ipv4Addr) -> io::Result<()> {
+        let mreq = unsafe {
+            let mut addr: WinSock::IN_ADDR = mem::zeroed();
+            addr.S_un.S_addr = u32::from(*interface).to_be();
+            addr
+        };
+        unsafe {
+            setsockopt(
+                self.socket.as_raw_socket(),
+                IPPROTO_IP,
+                WinSock::IP_MULTICAST_IF,
+                mreq,
+            )
+        }
+    }
+
+    pub fn set_multicast_loop_v4(&self, loop_v4: bool) -> io::Result<()> {
+        self.socket.set_multicast_loop_v4(loop_v4)
+    }
+
+    pub fn set_multicast_ttl_v4(&self, ttl: u32) -> io::Result<()> {
+        self.socket.set_multicast_ttl_v4(ttl)
+    }
+
+    pub fn join_multicast_v6(&self, addr: &Ipv6Addr, interface: u32) -> io::Result<()> {
+        self.socket.join_multicast_v6(addr, interface)
+    }
+
+    pub fn leave_multicast_v6(&self, addr: &Ipv6Addr, interface: u32) -> io::Result<()> {
+        self.socket.leave_multicast_v6(addr, interface)
+    }
+
+    pub fn set_multicast_if_v6(&self, interface: u32) -> io::Result<()> {
+        unsafe {
+            setsockopt(
+                self.socket.as_raw_socket(),
+                IPPROTO_IPV6,
+                WinSock::IPV6_MULTICAST_IF,
+                interface as i32,
+            )
+        }
+    }
+
+    pub fn set_multicast_loop_v6(&self, loop_v6: bool) -> io::Result<()> {
+        self.socket.set_multicast_loop_v6(loop_v6)
+    }
+
+    pub fn set_multicast_hops_v6(&self, hops: u32) -> io::Result<()> {
+        unsafe {
+            setsockopt(
+                self.socket.as_raw_socket(),
+                IPPROTO_IPV6,
+                WinSock::IPV6_MULTICAST_HOPS,
+                hops as i32,
+            )
+        }
+    }
+
+    pub async fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        self.socket.send(buf).await
+    }
+
+    pub async fn send_to(&self, buf: &[u8], addr: &SockAddr) -> io::Result<usize> {
+        let target = addr.as_socket().ok_or_else(|| {
+            Error::new(ErrorKind::InvalidInput, "Invalid socket address")
+        })?;
+        self.socket.send_to(buf, target).await
+    }
+
+    pub async fn recv(&self, buf: &mut [u8]) -> io::Result<(usize, PktInfo)> {
+        self.socket.readable().await?;
+
+        match self.try_recv(buf) {
+            Ok(result) => Ok(result),
+            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                loop {
+                    self.socket.readable().await?;
+                    match self.try_recv(buf) {
+                        Ok(result) => return Ok(result),
+                        Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn try_recv(&self, buf: &mut [u8]) -> io::Result<(usize, PktInfo)> {
+        let mut data = WSABUF {
+            buf: buf.as_mut_ptr() as PSTR,
+            len: buf.len() as u32,
+        };
+
+        let mut control_buffer = [0; CONTROL_PKTINFOV6_BUFFER_SIZE];
+        let control = WSABUF {
+            buf: control_buffer.as_mut_ptr(),
+            len: match self.domain {
+                Domain::IPV4 => CONTROL_PKTINFOV4_BUFFER_SIZE as u32,
+                Domain::IPV6 => CONTROL_PKTINFOV6_BUFFER_SIZE as u32,
+                _ => unreachable!(),
+            },
+        };
+
+        let mut addr = SockAddrStorage::zeroed();
+        let mut wsa_msg = WSAMSG {
+            name: &mut addr as *mut _ as *mut _,
+            namelen: addr.size_of(),
+            lpBuffers: &mut data,
+            Control: control,
+            dwBufferCount: 1,
+            dwFlags: 0,
+        };
+
+        let mut read_bytes = 0;
+        let error_code = unsafe {
+            (self.wsarecvmsg)(
+                self.socket.as_raw_socket() as _,
+                &mut wsa_msg,
+                &mut read_bytes,
+                ptr::null_mut(),
+                None,
+            )
+        };
+
+        if error_code != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let len = addr.size_of();
+        let addr_src = unsafe { SockAddr::new(addr, len) }.as_socket().unwrap();
+
+        let mut info: Option<PktInfo> = None;
+
+        if control.len as usize == CONTROL_PKTINFOV4_BUFFER_SIZE {
+            let cmsg_header: CMSGHDR = unsafe { ptr::read_unaligned(control.buf as *const _) };
+            if cmsg_header.cmsg_level == IPPROTO_IP && cmsg_header.cmsg_type == IP_PKTINFO {
+                let interface_info: IN_PKTINFO =
+                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
+
+                let addr_dst = IpAddr::V4(unsafe {
+                    Ipv4Addr::from(u32::from_be(interface_info.ipi_addr.S_un.S_addr))
+                });
+
+                info = Some(PktInfo {
+                    if_index: interface_info.ipi_ifindex as u64,
+                    addr_src,
+                    addr_dst,
+                })
+            }
+        } else if control.len as usize == CONTROL_PKTINFOV6_BUFFER_SIZE {
+            let cmsg_header: CMSGHDR = unsafe { ptr::read_unaligned(control.buf as *const _) };
+            if cmsg_header.cmsg_level == IPPROTO_IPV6 && cmsg_header.cmsg_type == IPV6_PKTINFO {
+                let interface_info: IN6_PKTINFO =
+                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
+
+                let addr_dst =
+                    IpAddr::V6(Ipv6Addr::from(unsafe { interface_info.ipi6_addr.u.Byte }));
+                info = Some(PktInfo {
+                    if_index: interface_info.ipi6_ifindex as u64,
+                    addr_src,
+                    addr_dst,
+                })
+            }
+        }
+
+        match info {
+            None => Err(Error::new(
+                ErrorKind::NotFound,
+                "Failed to read PKTINFO from socket",
+            )),
+            Some(info) => Ok((read_bytes as usize, info)),
+        }
+    }
+
+    pub fn try_clone_std(&self) -> io::Result<std::net::UdpSocket> {
+        unsafe {
+            let raw = self.socket.as_raw_socket();
+            let sock = Socket::from_raw_socket(raw);
+            let cloned = sock.try_clone()?;
+            let _ = sock.into_raw_socket(); // Prevent double-free
+            Ok(cloned.into())
+        }
     }
 }
