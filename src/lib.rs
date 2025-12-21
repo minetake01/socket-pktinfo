@@ -49,10 +49,8 @@
 //! # async fn example() -> std::io::Result<()> {
 //!
 //! let mut buf = [0; 1024];
-//! let socket = AsyncPktInfoUdpSocket::bind(
-//!     Domain::IPV4,
-//!     &SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8000).into()
-//! ).await?;
+//! let socket = AsyncPktInfoUdpSocket::new(Domain::IPV4)?;
+//! socket.bind(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8000).into())?;
 //!
 //! match socket.recv(&mut buf).await {
 //!     Ok((bytes_received, info)) => {

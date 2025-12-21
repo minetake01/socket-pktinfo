@@ -382,38 +382,6 @@ impl AsyncPktInfoUdpSocket {
         })
     }
 
-    pub async fn bind(domain: Domain, addr: &SockAddr) -> io::Result<AsyncPktInfoUdpSocket> {
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
-
-        match domain {
-            Domain::IPV4 => unsafe {
-                setsockopt(socket.as_raw_socket(), IPPROTO_IP, IP_PKTINFO, true as i32)?;
-            },
-            Domain::IPV6 => unsafe {
-                setsockopt(
-                    socket.as_raw_socket(),
-                    IPPROTO_IPV6,
-                    IPV6_PKTINFO,
-                    true as i32,
-                )?;
-            },
-            _ => return Err(Error::from(ErrorKind::Unsupported)),
-        }
-
-        let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(socket.as_raw_socket())?;
-        
-        socket.bind(addr)?;
-        socket.set_nonblocking(true)?;
-        let std_socket: std::net::UdpSocket = socket.into();
-        let tokio_socket = tokio::net::UdpSocket::from_std(std_socket)?;
-
-        Ok(AsyncPktInfoUdpSocket {
-            socket: tokio_socket,
-            domain,
-            wsarecvmsg,
-        })
-    }
-
     pub fn domain(&self) -> Domain {
         self.domain
     }
@@ -508,6 +476,17 @@ impl AsyncPktInfoUdpSocket {
                 WinSock::IPV6_MULTICAST_HOPS,
                 hops as i32,
             )
+        }
+    }
+
+    pub fn bind(&self, addr: &SockAddr) -> io::Result<()> {
+        let raw = self.socket.as_raw_socket();
+        let (ptr, len) = (addr.as_ptr(), addr.len());
+        let r = unsafe { WinSock::bind(raw as _, ptr as *const _ as *const _, len as i32) };
+        if r == 0 {
+            Ok(())
+        } else {
+            Err(Error::from_raw_os_error(unsafe { WinSock::WSAGetLastError() }))
         }
     }
 

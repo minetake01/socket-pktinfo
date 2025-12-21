@@ -12,11 +12,8 @@ async fn async_ipv4_basic_test() -> io::Result<()> {
     let local_addr: SockAddr = SocketAddr::new(IpAddr::V4(local_ip), port).into();
 
     let mut buf = [0; 1024];
-    let socket = AsyncPktInfoUdpSocket::bind(
-        Domain::IPV4,
-        &SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port).into(),
-    )
-    .await?;
+    let socket = AsyncPktInfoUdpSocket::new(Domain::IPV4)?;
+    socket.bind(&SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port).into())?;
 
     // Send a test packet
     {
@@ -75,17 +72,11 @@ async fn async_send_to_test() -> io::Result<()> {
     let recv_port = 19003;
     let local_ip = Ipv4Addr::LOCALHOST;
 
-    let send_socket = AsyncPktInfoUdpSocket::bind(
-        Domain::IPV4,
-        &SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), send_port).into(),
-    )
-    .await?;
+    let send_socket = AsyncPktInfoUdpSocket::new(Domain::IPV4)?;
+    send_socket.bind(&SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), send_port).into())?;
 
-    let recv_socket = AsyncPktInfoUdpSocket::bind(
-        Domain::IPV4,
-        &SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), recv_port).into(),
-    )
-    .await?;
+    let recv_socket = AsyncPktInfoUdpSocket::new(Domain::IPV4)?;
+    recv_socket.bind(&SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), recv_port).into())?;
 
     let target_addr: SockAddr = SocketAddr::new(IpAddr::V4(local_ip), recv_port).into();
     let data = b"Test send_to";

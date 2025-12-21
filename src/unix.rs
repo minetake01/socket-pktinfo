@@ -322,35 +322,6 @@ impl AsyncPktInfoUdpSocket {
         })
     }
 
-    pub async fn bind(domain: Domain, addr: &SockAddr) -> io::Result<AsyncPktInfoUdpSocket> {
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
-
-        match domain {
-            Domain::IPV4 => unsafe {
-                setsockopt(socket.as_raw_fd(), libc::IPPROTO_IP, libc::IP_PKTINFO, 1)?;
-            },
-            Domain::IPV6 => unsafe {
-                setsockopt(
-                    socket.as_raw_fd(),
-                    libc::IPPROTO_IPV6,
-                    libc::IPV6_RECVPKTINFO,
-                    1,
-                )?;
-            },
-            _ => return Err(Error::from(ErrorKind::Unsupported)),
-        }
-
-        socket.bind(addr)?;
-        socket.set_nonblocking(true)?;
-        let std_socket: std::net::UdpSocket = socket.into();
-        let tokio_socket = tokio::net::UdpSocket::from_std(std_socket)?;
-
-        Ok(AsyncPktInfoUdpSocket {
-            socket: tokio_socket,
-            domain,
-        })
-    }
-
     pub fn domain(&self) -> Domain {
         self.domain
     }
@@ -450,6 +421,17 @@ impl AsyncPktInfoUdpSocket {
                 libc::IPV6_MULTICAST_HOPS,
                 hops as libc::c_int,
             )
+        }
+    }
+
+    pub fn bind(&self, addr: &SockAddr) -> io::Result<()> {
+        let fd = self.socket.as_raw_fd();
+        let (ptr, len) = (addr.as_ptr(), addr.len());
+        let result = unsafe { libc::bind(fd, ptr.as_ptr(), len) };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(Error::last_os_error())
         }
     }
 
