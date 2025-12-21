@@ -176,7 +176,7 @@ impl PktInfoUdpSocket {
 
         let bytes_recv =
             unsafe { libc::recvmsg(self.socket.as_raw_fd(), &mut mhdr as *mut libc::msghdr, 0) };
-        if bytes_recv <= 0 {
+        if bytes_recv < 0 {
             return Err(Error::last_os_error());
         }
 
