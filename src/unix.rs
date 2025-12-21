@@ -427,7 +427,7 @@ impl AsyncPktInfoUdpSocket {
                 self.socket.as_raw_fd(),
                 libc::IPPROTO_IPV6,
                 libc::IPV6_MULTICAST_IF,
-                interface as libc::c_int,
+                interface as libc::c_uint,
             )
         }
     }
