@@ -241,11 +241,17 @@ impl PktInfoUdpSocket {
 
         let mut info: Option<PktInfo> = None;
 
-        if control.len as usize == CONTROL_PKTINFOV4_BUFFER_SIZE {
+        // Parse control message using returned ancillary data length and header-reported size
+        if wsa_msg.Control.len as usize >= CMSG_HEADER_SIZE {
             let cmsg_header: CMSGHDR = unsafe { ptr::read_unaligned(control.buf as *const _) };
-            if cmsg_header.cmsg_level == IPPROTO_IP && cmsg_header.cmsg_type == IP_PKTINFO {
-                let interface_info: IN_PKTINFO =
-                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
+
+            if cmsg_header.cmsg_level == IPPROTO_IP
+                && cmsg_header.cmsg_type == IP_PKTINFO
+                && (cmsg_header.cmsg_len as usize) >= CMSG_HEADER_SIZE + PKTINFOV4_DATA_SIZE
+            {
+                let interface_info: IN_PKTINFO = unsafe {
+                    ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _)
+                };
 
                 let addr_dst = IpAddr::V4(unsafe {
                     Ipv4Addr::from(u32::from_be(interface_info.ipi_addr.S_un.S_addr))
@@ -255,21 +261,23 @@ impl PktInfoUdpSocket {
                     if_index: interface_info.ipi_ifindex as u64,
                     addr_src,
                     addr_dst,
-                })
-            }
-        } else if control.len as usize == CONTROL_PKTINFOV6_BUFFER_SIZE {
-            let cmsg_header: CMSGHDR = unsafe { ptr::read_unaligned(control.buf as *const _) };
-            if cmsg_header.cmsg_level == IPPROTO_IPV6 && cmsg_header.cmsg_type == IPV6_PKTINFO {
-                let interface_info: IN6_PKTINFO =
-                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
+                });
+            } else if cmsg_header.cmsg_level == IPPROTO_IPV6
+                && cmsg_header.cmsg_type == IPV6_PKTINFO
+                && (cmsg_header.cmsg_len as usize) >= CMSG_HEADER_SIZE + PKTINFOV6_DATA_SIZE
+            {
+                let interface_info: IN6_PKTINFO = unsafe {
+                    ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _)
+                };
 
                 let addr_dst =
                     IpAddr::V6(Ipv6Addr::from(unsafe { interface_info.ipi6_addr.u.Byte }));
+
                 info = Some(PktInfo {
                     if_index: interface_info.ipi6_ifindex as u64,
                     addr_src,
                     addr_dst,
-                })
+                });
             }
         }
 
@@ -567,11 +575,17 @@ impl AsyncPktInfoUdpSocket {
 
         let mut info: Option<PktInfo> = None;
 
-        if control.len as usize == CONTROL_PKTINFOV4_BUFFER_SIZE {
+        // Parse control message using returned ancillary data length and header-reported size
+        if wsa_msg.Control.len as usize >= CMSG_HEADER_SIZE {
             let cmsg_header: CMSGHDR = unsafe { ptr::read_unaligned(control.buf as *const _) };
-            if cmsg_header.cmsg_level == IPPROTO_IP && cmsg_header.cmsg_type == IP_PKTINFO {
-                let interface_info: IN_PKTINFO =
-                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
+
+            if cmsg_header.cmsg_level == IPPROTO_IP
+                && cmsg_header.cmsg_type == IP_PKTINFO
+                && (cmsg_header.cmsg_len as usize) >= CMSG_HEADER_SIZE + PKTINFOV4_DATA_SIZE
+            {
+                let interface_info: IN_PKTINFO = unsafe {
+                    ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _)
+                };
 
                 let addr_dst = IpAddr::V4(unsafe {
                     Ipv4Addr::from(u32::from_be(interface_info.ipi_addr.S_un.S_addr))
@@ -581,21 +595,23 @@ impl AsyncPktInfoUdpSocket {
                     if_index: interface_info.ipi_ifindex as u64,
                     addr_src,
                     addr_dst,
-                })
-            }
-        } else if control.len as usize == CONTROL_PKTINFOV6_BUFFER_SIZE {
-            let cmsg_header: CMSGHDR = unsafe { ptr::read_unaligned(control.buf as *const _) };
-            if cmsg_header.cmsg_level == IPPROTO_IPV6 && cmsg_header.cmsg_type == IPV6_PKTINFO {
-                let interface_info: IN6_PKTINFO =
-                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
+                });
+            } else if cmsg_header.cmsg_level == IPPROTO_IPV6
+                && cmsg_header.cmsg_type == IPV6_PKTINFO
+                && (cmsg_header.cmsg_len as usize) >= CMSG_HEADER_SIZE + PKTINFOV6_DATA_SIZE
+            {
+                let interface_info: IN6_PKTINFO = unsafe {
+                    ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _)
+                };
 
                 let addr_dst =
                     IpAddr::V6(Ipv6Addr::from(unsafe { interface_info.ipi6_addr.u.Byte }));
+
                 info = Some(PktInfo {
                     if_index: interface_info.ipi6_ifindex as u64,
                     addr_src,
                     addr_dst,
-                })
+                });
             }
         }
 
