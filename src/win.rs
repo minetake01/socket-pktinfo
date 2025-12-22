@@ -237,13 +237,31 @@ impl PktInfoUdpSocket {
         }
 
         let len = addr.size_of();
-        let addr_src = unsafe { SockAddr::new(addr, len) }.as_socket().unwrap();
+        let addr_src = unsafe { SockAddr::new(addr, len) }
+            .as_socket()
+            .ok_or_else(|| Error::new(ErrorKind::InvalidData, "Invalid source address"))?;
 
         let mut info: Option<PktInfo> = None;
 
         // Parse control message using returned ancillary data length and header-reported size
         if wsa_msg.Control.len as usize >= CMSG_HEADER_SIZE {
+            if wsa_msg.dwFlags & (WinSock::MSG_TRUNC | WinSock::MSG_CTRUNC) != 0 {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    "Ancillary data truncated while reading PKTINFO",
+                ));
+            }
+
             let cmsg_header: CMSGHDR = unsafe { ptr::read_unaligned(control.buf as *const _) };
+
+            let cmsg_len = cmsg_header.cmsg_len as usize;
+            let control_len = wsa_msg.Control.len as usize;
+            if cmsg_len < CMSG_HEADER_SIZE || cmsg_len > control_len {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "Invalid control message length",
+                ));
+            }
 
             if cmsg_header.cmsg_level == IPPROTO_IP
                 && cmsg_header.cmsg_type == IP_PKTINFO
@@ -502,21 +520,18 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub async fn recv(&self, buf: &mut [u8]) -> io::Result<(usize, PktInfo)> {
-        self.socket.readable().await?;
+        use tokio::io::Interest;
 
-        match self.try_recv(buf) {
-            Ok(result) => Ok(result),
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                loop {
-                    self.socket.readable().await?;
-                    match self.try_recv(buf) {
-                        Ok(result) => return Ok(result),
-                        Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
-                        Err(e) => return Err(e),
-                    }
-                }
+        loop {
+            self.socket.readable().await?;
+            match self
+                .socket
+                .try_io(Interest::READABLE, || self.try_recv(buf))
+            {
+                Ok(res) => return res,
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
             }
-            Err(e) => Err(e),
         }
     }
 
@@ -562,13 +577,31 @@ impl AsyncPktInfoUdpSocket {
         }
 
         let len = addr.size_of();
-        let addr_src = unsafe { SockAddr::new(addr, len) }.as_socket().unwrap();
+        let addr_src = unsafe { SockAddr::new(addr, len) }
+            .as_socket()
+            .ok_or_else(|| Error::new(ErrorKind::InvalidData, "Invalid source address"))?;
 
         let mut info: Option<PktInfo> = None;
 
         // Parse control message using returned ancillary data length and header-reported size
         if wsa_msg.Control.len as usize >= CMSG_HEADER_SIZE {
+            if wsa_msg.dwFlags & (WinSock::MSG_TRUNC | WinSock::MSG_CTRUNC) != 0 {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    "Ancillary data truncated while reading PKTINFO",
+                ));
+            }
+
             let cmsg_header: CMSGHDR = unsafe { ptr::read_unaligned(control.buf as *const _) };
+
+            let cmsg_len = cmsg_header.cmsg_len as usize;
+            let control_len = wsa_msg.Control.len as usize;
+            if cmsg_len < CMSG_HEADER_SIZE || cmsg_len > control_len {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "Invalid control message length",
+                ));
+            }
 
             if cmsg_header.cmsg_level == IPPROTO_IP
                 && cmsg_header.cmsg_type == IP_PKTINFO
@@ -616,12 +649,10 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub fn try_clone_std(&self) -> io::Result<std::net::UdpSocket> {
-        unsafe {
-            let raw = self.socket.as_raw_socket();
-            let sock = Socket::from_raw_socket(raw);
-            let cloned = sock.try_clone()?;
-            let _ = sock.into_raw_socket(); // Prevent double-free
-            Ok(cloned.into())
-        }
+        // Duplicate via Tokio's safe clone, then convert without transferring ownership
+        let cloned = self.socket.try_clone()?;
+        let std_sock = cloned.into_std()?;
+        std_sock.set_nonblocking(true)?;
+        Ok(std_sock)
     }
 }

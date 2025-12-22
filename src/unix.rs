@@ -10,7 +10,7 @@ use socket2::{Domain, Protocol, SockAddr, SockAddrStorage, Socket, Type};
 use crate::PktInfo;
 
 #[cfg(feature = "tokio")]
-use std::os::unix::io::{AsFd, FromRawFd, IntoRawFd};
+use std::os::unix::io::{AsFd, FromRawFd};
 
 unsafe fn setsockopt<T>(
     socket: libc::c_int,
@@ -203,6 +203,14 @@ impl PktInfoUdpSocket {
 
             match (h.cmsg_level, h.cmsg_type) {
                 (libc::IPPROTO_IP, libc::IP_PKTINFO) => {
+                    let need = mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in_pktinfo>();
+                    if (h.cmsg_len as usize) < need || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize) {
+                        header = unsafe {
+                            let p = libc::CMSG_NXTHDR(&mhdr as *const _, h as *const _);
+                            p.as_ref()
+                        };
+                        continue;
+                    }
                     let pktinfo = unsafe { ptr::read_unaligned(p as *const libc::in_pktinfo) };
                     info = Some(PktInfo {
                         if_index: pktinfo.ipi_ifindex as _,
@@ -211,6 +219,14 @@ impl PktInfoUdpSocket {
                     })
                 }
                 (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => {
+                    let need = mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in6_pktinfo>();
+                    if (h.cmsg_len as usize) < need || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize) {
+                        header = unsafe {
+                            let p = libc::CMSG_NXTHDR(&mhdr as *const _, h as *const _);
+                            p.as_ref()
+                        };
+                        continue;
+                    }
                     let pktinfo = unsafe { ptr::read_unaligned(p as *const libc::in6_pktinfo) };
 
                     info = Some(PktInfo {
@@ -427,7 +443,7 @@ impl AsyncPktInfoUdpSocket {
     pub fn bind(&self, addr: &SockAddr) -> io::Result<()> {
         let fd = self.socket.as_raw_fd();
         let (ptr, len) = (addr.as_ptr(), addr.len());
-        let result = unsafe { libc::bind(fd, ptr.as_ptr(), len) };
+        let result = unsafe { libc::bind(fd, ptr as *const libc::sockaddr, len) };
         if result == 0 {
             Ok(())
         } else {
@@ -447,21 +463,18 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub async fn recv(&self, buf: &mut [u8]) -> io::Result<(usize, PktInfo)> {
-        self.socket.readable().await?;
+        use tokio::io::Interest;
 
-        match self.try_recv(buf) {
-            Ok(result) => Ok(result),
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                loop {
-                    self.socket.readable().await?;
-                    match self.try_recv(buf) {
-                        Ok(result) => return Ok(result),
-                        Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
-                        Err(e) => return Err(e),
-                    }
-                }
+        loop {
+            self.socket.readable().await?;
+            match self
+                .socket
+                .try_io(Interest::READABLE, || self.try_recv(buf))
+            {
+                Ok(res) => return Ok(res),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
             }
-            Err(e) => Err(e),
         }
     }
 
@@ -501,20 +514,32 @@ impl AsyncPktInfoUdpSocket {
         }
 
         let len = addr_src.size_of();
-        let addr_src = unsafe { SockAddr::new(addr_src, len) }.as_socket().unwrap();
+        let addr_src = unsafe { SockAddr::new(addr_src, len) }
+            .as_socket()
+            .ok_or_else(|| Error::new(ErrorKind::InvalidData, "Invalid source address"))?;
 
         let mut header = if mhdr.msg_controllen > 0 {
             debug_assert!(!mhdr.msg_control.is_null());
             debug_assert!(cmsg.capacity() >= mhdr.msg_controllen as usize);
 
-            Some(unsafe {
-                libc::CMSG_FIRSTHDR(&mhdr as *const libc::msghdr)
-                    .as_ref()
-                    .unwrap()
-            })
+            unsafe { libc::CMSG_FIRSTHDR(&mhdr as *const libc::msghdr).as_ref() }
         } else {
             None
         };
+
+        if mhdr.msg_flags & libc::MSG_CTRUNC != 0 {
+            return Err(Error::new(
+                ErrorKind::Other,
+                "Ancillary data truncated while reading PKTINFO",
+            ));
+        }
+
+        if mhdr.msg_flags & libc::MSG_TRUNC != 0 {
+            return Err(Error::new(
+                ErrorKind::Other,
+                "Payload truncated while reading UDP datagram",
+            ));
+        }
 
         let mut info: Option<PktInfo> = None;
         while info.is_none() && header.is_some() {
@@ -558,12 +583,14 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub fn try_clone_std(&self) -> io::Result<std::net::UdpSocket> {
-        unsafe {
-            let raw = self.socket.as_raw_fd();
-            let sock = Socket::from_raw_fd(raw);
-            let cloned = sock.try_clone()?;
-            let _ = sock.into_raw_fd(); // Prevent double-free
-            Ok(cloned.into())
+        // SAFETY: dup creates a new owned fd; we wrap it immediately to manage ownership safely
+        let raw = self.socket.as_raw_fd();
+        let dup_fd = unsafe { libc::dup(raw) };
+        if dup_fd < 0 {
+            return Err(Error::last_os_error());
         }
+
+        let sock = unsafe { Socket::from_raw_fd(dup_fd) };
+        Ok(sock.into())
     }
 }
