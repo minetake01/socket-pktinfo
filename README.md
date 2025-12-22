@@ -26,7 +26,7 @@ Add this to your `Cargo.toml`:
 socket-pktinfo = "0.4"
 
 # For Tokio async support
-socket-pktinfo = { version = "0.4", features = ["tokio"] }
+socket-pktinfo = { git = "https://github.com/minetake01/socket-pktinfo.git", branch = "tokio-support", features = ["tokio"] }
 ```
 
 ## Examples
