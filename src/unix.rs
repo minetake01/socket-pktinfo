@@ -619,7 +619,6 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub fn try_clone_std(&self) -> io::Result<std::net::UdpSocket> {
-        // SAFETY: dup creates a new owned fd; we wrap it immediately to manage ownership safely
         let raw = self.socket.as_raw_fd();
         let dup_fd = unsafe { libc::dup(raw) };
         if dup_fd < 0 {

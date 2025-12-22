@@ -528,7 +528,7 @@ impl AsyncPktInfoUdpSocket {
                 .socket
                 .try_io(Interest::READABLE, || self.try_recv(buf))
             {
-                Ok(res) => return res,
+                Ok(res) => return Ok(res),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
                 Err(e) => return Err(e),
             }
@@ -649,10 +649,8 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub fn try_clone_std(&self) -> io::Result<std::net::UdpSocket> {
-        // Duplicate via Tokio's safe clone, then convert without transferring ownership
-        let cloned = self.socket.try_clone()?;
-        let std_sock = cloned.into_std()?;
-        std_sock.set_nonblocking(true)?;
-        Ok(std_sock)
+        let sock = self.socket.as_socket();
+		let cloned = sock.try_clone_to_owned()?;
+		Ok(cloned.into())
     }
 }
