@@ -187,6 +187,13 @@ impl PktInfoUdpSocket {
             debug_assert!(!mhdr.msg_control.is_null());
             debug_assert!(cmsg.capacity() >= mhdr.msg_controllen as usize);
 
+            if (mhdr.msg_controllen as usize) > cmsg.capacity() {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "Ancillary data length exceeds buffer",
+                ));
+            }
+
             Some(unsafe {
                 libc::CMSG_FIRSTHDR(&mhdr as *const libc::msghdr)
                     .as_ref()
@@ -522,6 +529,13 @@ impl AsyncPktInfoUdpSocket {
             debug_assert!(!mhdr.msg_control.is_null());
             debug_assert!(cmsg.capacity() >= mhdr.msg_controllen as usize);
 
+            if (mhdr.msg_controllen as usize) > cmsg.capacity() {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "Ancillary data length exceeds buffer",
+                ));
+            }
+
             unsafe { libc::CMSG_FIRSTHDR(&mhdr as *const libc::msghdr).as_ref() }
         } else {
             None
@@ -548,6 +562,17 @@ impl AsyncPktInfoUdpSocket {
 
             match (h.cmsg_level, h.cmsg_type) {
                 (libc::IPPROTO_IP, libc::IP_PKTINFO) => {
+                    let need =
+                        mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in_pktinfo>();
+                    if (h.cmsg_len as usize) < need
+                        || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize)
+                    {
+                        header = unsafe {
+                            let p = libc::CMSG_NXTHDR(&mhdr as *const _, h as *const _);
+                            p.as_ref()
+                        };
+                        continue;
+                    }
                     let pktinfo = unsafe { ptr::read_unaligned(p as *const libc::in_pktinfo) };
                     info = Some(PktInfo {
                         if_index: pktinfo.ipi_ifindex as _,
@@ -556,6 +581,17 @@ impl AsyncPktInfoUdpSocket {
                     })
                 }
                 (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => {
+                    let need =
+                        mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in6_pktinfo>();
+                    if (h.cmsg_len as usize) < need
+                        || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize)
+                    {
+                        header = unsafe {
+                            let p = libc::CMSG_NXTHDR(&mhdr as *const _, h as *const _);
+                            p.as_ref()
+                        };
+                        continue;
+                    }
                     let pktinfo = unsafe { ptr::read_unaligned(p as *const libc::in6_pktinfo) };
 
                     info = Some(PktInfo {
