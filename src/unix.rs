@@ -213,7 +213,9 @@ impl PktInfoUdpSocket {
             match (h.cmsg_level, h.cmsg_type) {
                 (libc::IPPROTO_IP, libc::IP_PKTINFO) => {
                     let need = mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in_pktinfo>();
-                    if (h.cmsg_len as usize) < need || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize) {
+                    if (h.cmsg_len as usize) < need
+                        || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize)
+                    {
                         header = unsafe {
                             let p = libc::CMSG_NXTHDR(&mhdr as *const _, h as *const _);
                             p.as_ref()
@@ -228,8 +230,11 @@ impl PktInfoUdpSocket {
                     })
                 }
                 (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => {
-                    let need = mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in6_pktinfo>();
-                    if (h.cmsg_len as usize) < need || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize) {
+                    let need =
+                        mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in6_pktinfo>();
+                    if (h.cmsg_len as usize) < need
+                        || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize)
+                    {
                         header = unsafe {
                             let p = libc::CMSG_NXTHDR(&mhdr as *const _, h as *const _);
                             p.as_ref()
@@ -315,15 +320,12 @@ impl AsyncPktInfoUdpSocket {
             }
         }
 
-        Ok(AsyncPktInfoUdpSocket {
-            socket,
-            domain,
-        })
+        Ok(AsyncPktInfoUdpSocket { socket, domain })
     }
 
     pub fn from_std(std_socket: std::net::UdpSocket) -> io::Result<AsyncPktInfoUdpSocket> {
         let raw_fd = std_socket.as_raw_fd();
-        
+
         let domain;
         match std_socket.local_addr()? {
             std::net::SocketAddr::V4(_) => {
@@ -331,13 +333,13 @@ impl AsyncPktInfoUdpSocket {
                 unsafe {
                     setsockopt(raw_fd, libc::IPPROTO_IP, libc::IP_PKTINFO, 1)?;
                 }
-            },
+            }
             std::net::SocketAddr::V6(_) => {
                 domain = Domain::IPV6;
                 unsafe {
                     setsockopt(raw_fd, libc::IPPROTO_IPV6, libc::IPV6_RECVPKTINFO, 1)?;
                 }
-            },
+            }
         }
 
         std_socket.set_nonblocking(true)?;
@@ -456,9 +458,9 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub async fn send_to(&self, buf: &[u8], addr: &SockAddr) -> io::Result<usize> {
-        let target = addr.as_socket().ok_or_else(|| {
-            Error::new(ErrorKind::InvalidInput, "Invalid socket address")
-        })?;
+        let target = addr
+            .as_socket()
+            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid socket address"))?;
         self.socket.send_to(buf, target).await
     }
 
@@ -555,8 +557,7 @@ impl AsyncPktInfoUdpSocket {
 
             match (h.cmsg_level, h.cmsg_type) {
                 (libc::IPPROTO_IP, libc::IP_PKTINFO) => {
-                    let need =
-                        mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in_pktinfo>();
+                    let need = mem::size_of::<libc::cmsghdr>() + mem::size_of::<libc::in_pktinfo>();
                     if (h.cmsg_len as usize) < need
                         || (h.cmsg_len as usize) > (mhdr.msg_controllen as usize)
                     {

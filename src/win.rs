@@ -269,9 +269,8 @@ impl PktInfoUdpSocket {
                 && cmsg_header.cmsg_type == IP_PKTINFO
                 && (cmsg_header.cmsg_len as usize) >= CMSG_HEADER_SIZE + PKTINFOV4_DATA_SIZE
             {
-                let interface_info: IN_PKTINFO = unsafe {
-                    ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _)
-                };
+                let interface_info: IN_PKTINFO =
+                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
 
                 let addr_dst = IpAddr::V4(unsafe {
                     Ipv4Addr::from(u32::from_be(interface_info.ipi_addr.S_un.S_addr))
@@ -286,9 +285,8 @@ impl PktInfoUdpSocket {
                 && cmsg_header.cmsg_type == IPV6_PKTINFO
                 && (cmsg_header.cmsg_len as usize) >= CMSG_HEADER_SIZE + PKTINFOV6_DATA_SIZE
             {
-                let interface_info: IN6_PKTINFO = unsafe {
-                    ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _)
-                };
+                let interface_info: IN6_PKTINFO =
+                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
 
                 let addr_dst =
                     IpAddr::V6(Ipv6Addr::from(unsafe { interface_info.ipi6_addr.u.Byte }));
@@ -355,17 +353,17 @@ impl AsyncPktInfoUdpSocket {
                 unsafe {
                     setsockopt(raw_socket, IPPROTO_IP, IP_PKTINFO, true as i32)?;
                 }
-            },
+            }
             std::net::SocketAddr::V6(_) => {
                 domain = Domain::IPV6;
                 unsafe {
                     setsockopt(raw_socket, IPPROTO_IPV6, IPV6_PKTINFO, true as i32)?;
                 }
-            },
+            }
         };
 
         let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(raw_socket)?;
-        
+
         Ok(AsyncPktInfoUdpSocket {
             socket,
             domain,
@@ -383,17 +381,17 @@ impl AsyncPktInfoUdpSocket {
                 unsafe {
                     setsockopt(raw_socket, IPPROTO_IP, IP_PKTINFO, true as i32)?;
                 }
-            },
+            }
             std::net::SocketAddr::V6(_) => {
                 domain = Domain::IPV6;
                 unsafe {
                     setsockopt(raw_socket, IPPROTO_IPV6, IPV6_PKTINFO, true as i32)?;
                 }
-            },
+            }
         }
 
         let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(raw_socket)?;
-        
+
         std_socket.set_nonblocking(true)?;
         let tokio_socket = tokio::net::UdpSocket::from_std(std_socket)?;
 
@@ -506,9 +504,9 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub async fn send_to(&self, buf: &[u8], addr: &SockAddr) -> io::Result<usize> {
-        let target = addr.as_socket().ok_or_else(|| {
-            Error::new(ErrorKind::InvalidInput, "Invalid socket address")
-        })?;
+        let target = addr
+            .as_socket()
+            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid socket address"))?;
         self.socket.send_to(buf, target).await
     }
 
@@ -600,9 +598,8 @@ impl AsyncPktInfoUdpSocket {
                 && cmsg_header.cmsg_type == IP_PKTINFO
                 && (cmsg_header.cmsg_len as usize) >= CMSG_HEADER_SIZE + PKTINFOV4_DATA_SIZE
             {
-                let interface_info: IN_PKTINFO = unsafe {
-                    ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _)
-                };
+                let interface_info: IN_PKTINFO =
+                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
 
                 let addr_dst = IpAddr::V4(unsafe {
                     Ipv4Addr::from(u32::from_be(interface_info.ipi_addr.S_un.S_addr))
@@ -617,9 +614,8 @@ impl AsyncPktInfoUdpSocket {
                 && cmsg_header.cmsg_type == IPV6_PKTINFO
                 && (cmsg_header.cmsg_len as usize) >= CMSG_HEADER_SIZE + PKTINFOV6_DATA_SIZE
             {
-                let interface_info: IN6_PKTINFO = unsafe {
-                    ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _)
-                };
+                let interface_info: IN6_PKTINFO =
+                    unsafe { ptr::read_unaligned(control.buf.add(CMSG_HEADER_SIZE) as *const _) };
 
                 let addr_dst =
                     IpAddr::V6(Ipv6Addr::from(unsafe { interface_info.ipi6_addr.u.Byte }));
@@ -643,7 +639,7 @@ impl AsyncPktInfoUdpSocket {
 
     pub fn try_clone_std(&self) -> io::Result<std::net::UdpSocket> {
         let sock = self.socket.as_socket();
-		let cloned = sock.try_clone_to_owned()?;
-		Ok(cloned.into())
+        let cloned = sock.try_clone_to_owned()?;
+        Ok(cloned.into())
     }
 }

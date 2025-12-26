@@ -1,6 +1,6 @@
 #![cfg(feature = "tokio")]
 
-use socket2::{Domain, Protocol, Socket, SockAddr, Type};
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use socket_pktinfo::AsyncPktInfoUdpSocket;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -12,7 +12,9 @@ async fn async_ipv4_basic_test() -> io::Result<()> {
     let local_addr: SockAddr = SocketAddr::new(IpAddr::V4(local_ip), port).into();
 
     let mut buf = [0; 1024];
-    let socket = AsyncPktInfoUdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)).await?;
+    let socket =
+        AsyncPktInfoUdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port))
+            .await?;
 
     // Send a test packet
     {
@@ -39,10 +41,8 @@ async fn async_from_std_test() -> io::Result<()> {
     let local_addr: SockAddr = SocketAddr::new(IpAddr::V4(local_ip), port).into();
 
     // Create a standard UDP socket and convert to AsyncPktInfoUdpSocket
-    let std_socket = std::net::UdpSocket::bind(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-        port,
-    ))?;
+    let std_socket =
+        std::net::UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port))?;
     let socket = AsyncPktInfoUdpSocket::from_std(std_socket)?;
 
     let mut buf = [0; 1024];
@@ -71,13 +71,21 @@ async fn async_send_to_test() -> io::Result<()> {
     let recv_port = 19003;
     let local_ip = Ipv4Addr::LOCALHOST;
 
-    let send_socket = AsyncPktInfoUdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), send_port)).await?;
+    let send_socket = AsyncPktInfoUdpSocket::bind(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        send_port,
+    ))
+    .await?;
 
-    let recv_socket = AsyncPktInfoUdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), recv_port)).await?;
+    let recv_socket = AsyncPktInfoUdpSocket::bind(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        recv_port,
+    ))
+    .await?;
 
     let target_addr: SockAddr = SocketAddr::new(IpAddr::V4(local_ip), recv_port).into();
     let data = b"Test send_to";
-    
+
     let bytes_sent = send_socket.send_to(data, &target_addr).await?;
     assert_eq!(bytes_sent, data.len());
 
