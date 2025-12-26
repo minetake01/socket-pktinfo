@@ -83,7 +83,7 @@ async fn async_send_to_test() -> io::Result<()> {
     ))
     .await?;
 
-    let target_addr: SockAddr = SocketAddr::new(IpAddr::V4(local_ip), recv_port).into();
+    let target_addr = SocketAddr::new(IpAddr::V4(local_ip), recv_port);
     let data = b"Test send_to";
 
     let bytes_sent = send_socket.send_to(data, &target_addr).await?;

@@ -503,11 +503,11 @@ impl AsyncPktInfoUdpSocket {
         self.socket.send(buf).await
     }
 
-    pub async fn send_to(&self, buf: &[u8], addr: &SockAddr) -> io::Result<usize> {
-        let target = addr
-            .as_socket()
-            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid socket address"))?;
-        self.socket.send_to(buf, target).await
+    pub async fn send_to<A>(&self, buf: &[u8], addr: A) -> io::Result<usize>
+    where
+        A: ToSocketAddrs,
+    {
+        self.socket.send_to(buf, addr).await
     }
 
     pub async fn recv(&self, buf: &mut [u8]) -> io::Result<(usize, PktInfo)> {
