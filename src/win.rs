@@ -5,6 +5,8 @@ use std::os::windows::io::{AsRawSocket, RawSocket};
 use std::{io, mem, ptr};
 
 use socket2::{Domain, Protocol, SockAddr, SockAddrStorage, Socket, Type};
+#[cfg(feature = "tokio")]
+use tokio::net::ToSocketAddrs;
 use windows_sys::core::{PCSTR, PSTR};
 use windows_sys::Win32::Networking::WinSock::{
     self, CMSGHDR, IN6_PKTINFO, IN_PKTINFO, IPPROTO_IP, IPPROTO_IPV6, IPV6_PKTINFO, IP_PKTINFO,
@@ -16,7 +18,7 @@ use windows_sys::Win32::System::IO::OVERLAPPED;
 use crate::PktInfo;
 
 #[cfg(feature = "tokio")]
-use std::os::windows::io::{AsSocket, FromRawSocket, IntoRawSocket};
+use std::os::windows::io::AsSocket;
 
 const CMSG_HEADER_SIZE: usize = mem::size_of::<CMSGHDR>();
 const PKTINFOV4_DATA_SIZE: usize = mem::size_of::<IN_PKTINFO>();
@@ -339,32 +341,33 @@ impl AsSocket for AsyncPktInfoUdpSocket {
 
 #[cfg(feature = "tokio")]
 impl AsyncPktInfoUdpSocket {
-    pub fn new(domain: Domain) -> io::Result<AsyncPktInfoUdpSocket> {
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+    pub async fn bind<A>(addr: A) -> io::Result<AsyncPktInfoUdpSocket>
+    where
+        A: ToSocketAddrs,
+    {
+        let socket = tokio::net::UdpSocket::bind(addr).await?;
+        let raw_socket = socket.as_raw_socket();
 
-        match domain {
-            Domain::IPV4 => unsafe {
-                setsockopt(socket.as_raw_socket(), IPPROTO_IP, IP_PKTINFO, true as i32)?;
+        let domain;
+        match socket.local_addr()? {
+            std::net::SocketAddr::V4(_) => {
+                domain = Domain::IPV4;
+                unsafe {
+                    setsockopt(raw_socket, IPPROTO_IP, IP_PKTINFO, true as i32)?;
+                }
             },
-            Domain::IPV6 => unsafe {
-                setsockopt(
-                    socket.as_raw_socket(),
-                    IPPROTO_IPV6,
-                    IPV6_PKTINFO,
-                    true as i32,
-                )?;
+            std::net::SocketAddr::V6(_) => {
+                domain = Domain::IPV6;
+                unsafe {
+                    setsockopt(raw_socket, IPPROTO_IPV6, IPV6_PKTINFO, true as i32)?;
+                }
             },
-            _ => return Err(Error::from(ErrorKind::Unsupported)),
-        }
+        };
 
-        let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(socket.as_raw_socket())?;
+        let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(raw_socket)?;
         
-        socket.set_nonblocking(true)?;
-        let std_socket: std::net::UdpSocket = socket.into();
-        let tokio_socket = tokio::net::UdpSocket::from_std(std_socket)?;
-
         Ok(AsyncPktInfoUdpSocket {
-            socket: tokio_socket,
+            socket,
             domain,
             wsarecvmsg,
         })
@@ -372,20 +375,21 @@ impl AsyncPktInfoUdpSocket {
 
     pub fn from_std(std_socket: std::net::UdpSocket) -> io::Result<AsyncPktInfoUdpSocket> {
         let raw_socket = std_socket.as_raw_socket();
-        let domain = if std_socket.local_addr()?.is_ipv4() {
-            Domain::IPV4
-        } else {
-            Domain::IPV6
-        };
 
-        match domain {
-            Domain::IPV4 => unsafe {
-                setsockopt(raw_socket, IPPROTO_IP, IP_PKTINFO, true as i32)?;
+        let domain;
+        match std_socket.local_addr()? {
+            std::net::SocketAddr::V4(_) => {
+                domain = Domain::IPV4;
+                unsafe {
+                    setsockopt(raw_socket, IPPROTO_IP, IP_PKTINFO, true as i32)?;
+                }
             },
-            Domain::IPV6 => unsafe {
-                setsockopt(raw_socket, IPPROTO_IPV6, IPV6_PKTINFO, true as i32)?;
+            std::net::SocketAddr::V6(_) => {
+                domain = Domain::IPV6;
+                unsafe {
+                    setsockopt(raw_socket, IPPROTO_IPV6, IPV6_PKTINFO, true as i32)?;
+                }
             },
-            _ => return Err(Error::from(ErrorKind::Unsupported)),
         }
 
         let wsarecvmsg: WSARecvMsgExtension = locate_wsarecvmsg(raw_socket)?;
@@ -494,17 +498,6 @@ impl AsyncPktInfoUdpSocket {
                 WinSock::IPV6_MULTICAST_HOPS,
                 hops as i32,
             )
-        }
-    }
-
-    pub fn bind(&self, addr: &SockAddr) -> io::Result<()> {
-        let raw = self.socket.as_raw_socket();
-        let (ptr, len) = (addr.as_ptr(), addr.len());
-        let r = unsafe { WinSock::bind(raw as _, ptr as *const _ as *const _, len as i32) };
-        if r == 0 {
-            Ok(())
-        } else {
-            Err(Error::from_raw_os_error(unsafe { WinSock::WSAGetLastError() }))
         }
     }
 
