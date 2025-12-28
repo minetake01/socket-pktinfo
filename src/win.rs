@@ -410,17 +410,6 @@ impl AsyncPktInfoUdpSocket {
         self.socket.local_addr()
     }
 
-    pub fn set_reuse_address(&self, reuse: bool) -> io::Result<()> {
-        unsafe {
-            setsockopt(
-                self.socket.as_raw_socket(),
-                WinSock::SOL_SOCKET,
-                WinSock::SO_REUSEADDR,
-                reuse as i32,
-            )
-        }
-    }
-
     pub fn join_multicast_v4(&self, addr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
         self.socket.join_multicast_v4(*addr, *interface)
     }

@@ -359,28 +359,6 @@ impl AsyncPktInfoUdpSocket {
         self.socket.local_addr()
     }
 
-    pub fn set_reuse_address(&self, reuse: bool) -> io::Result<()> {
-        unsafe {
-            setsockopt(
-                self.socket.as_raw_fd(),
-                libc::SOL_SOCKET,
-                libc::SO_REUSEADDR,
-                reuse as libc::c_int,
-            )
-        }
-    }
-
-    pub fn set_reuse_port(&self, reuse: bool) -> io::Result<()> {
-        unsafe {
-            setsockopt(
-                self.socket.as_raw_fd(),
-                libc::SOL_SOCKET,
-                libc::SO_REUSEPORT,
-                reuse as libc::c_int,
-            )
-        }
-    }
-
     pub fn join_multicast_v4(&self, addr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
         self.socket.join_multicast_v4(*addr, *interface)
     }
