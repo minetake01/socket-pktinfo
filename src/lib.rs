@@ -82,7 +82,7 @@ pub use unix::*;
 #[derive(Debug, Clone)]
 pub struct PktInfo {
     /// Interface index
-    pub if_index: u64,
+    pub if_index: u32,
     /// Source address
     pub addr_src: std::net::SocketAddr,
     /// Header destination address

@@ -277,7 +277,7 @@ impl PktInfoUdpSocket {
                 });
 
                 info = Some(PktInfo {
-                    if_index: interface_info.ipi_ifindex as u64,
+                    if_index: interface_info.ipi_ifindex,
                     addr_src,
                     addr_dst,
                 });
@@ -292,7 +292,7 @@ impl PktInfoUdpSocket {
                     IpAddr::V6(Ipv6Addr::from(unsafe { interface_info.ipi6_addr.u.Byte }));
 
                 info = Some(PktInfo {
-                    if_index: interface_info.ipi6_ifindex as u64,
+                    if_index: interface_info.ipi6_ifindex,
                     addr_src,
                     addr_dst,
                 });
@@ -589,7 +589,7 @@ impl AsyncPktInfoUdpSocket {
                 });
 
                 info = Some(PktInfo {
-                    if_index: interface_info.ipi_ifindex as u64,
+                    if_index: interface_info.ipi_ifindex,
                     addr_src,
                     addr_dst,
                 });
@@ -604,7 +604,7 @@ impl AsyncPktInfoUdpSocket {
                     IpAddr::V6(Ipv6Addr::from(unsafe { interface_info.ipi6_addr.u.Byte }));
 
                 info = Some(PktInfo {
-                    if_index: interface_info.ipi6_ifindex as u64,
+                    if_index: interface_info.ipi6_ifindex,
                     addr_src,
                     addr_dst,
                 });
