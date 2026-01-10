@@ -451,12 +451,6 @@ impl AsyncPktInfoUdpSocket {
     }
 
     pub fn set_multicast_if_v6(&self, interface: u32) -> io::Result<()> {
-        if interface > i32::MAX as u32 {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "interface index out of range for IPV6_MULTICAST_IF",
-            ));
-        }
         unsafe {
             setsockopt(
                 self.socket.as_raw_socket(),
